@@ -204,44 +204,47 @@ TaxiiController.get('/:root/collections/:id/objects', (req: Request, res: Respon
         }
 
         model
-            .find(filter, (err: any, data: any) => {
-                res.set('Content-Type', config.response_type.stix);
-                if (err || !data || !data.length) {
-                    return res.status(404).send(JSON.stringify(error.ERROR_404));
-                }
+            .count(filter, (err: any, total: number) => {
+                model
+                    .find(filter, (err: any, data: any) => {
+                        res.set('Content-Type', config.response_type.stix);
+                        if (err || !data) {
+                            return res.status(404).send(JSON.stringify(error.ERROR_404));
+                        }
 
-                const responseData: IStix[]  = data
-                    .map((datum: any): IUFStix => datum.toObject())
-                    .map((datum: IUFStix): IStix => {
-                        return {
-                            ...datum.stix,
-                            ...datum.extendedProperties
+                        const responseData: IStix[]  = data
+                            .map((datum: any): IUFStix => datum.toObject())
+                            .map((datum: IUFStix): IStix => {
+                                return {
+                                    ...datum.stix,
+                                    ...datum.extendedProperties
+                                };
+                            });
+
+                        if (!responseData) {
+                            return res.status(416).json(error.ERROR_416);
+                        }
+
+                        // Set
+                        if (skip || limit) {
+                            let end = skip+limit;
+                            res.set('Content-Range', `items ${skip}-${end}/${total}`).status(206);
+                        }
+
+                        res.set('Content-Type', config.response_type.stix);
+                        // transform array to bundle
+                        const bundle = {
+                            type: 'bundle',
+                            id: 'bundle--' + uuidv4(),
+                            spec_version: config.bundle_spec_version,
+                            objects: responseData,
                         };
-                    });
-                
-                if (!responseData || !responseData.length) {
-                    return res.status(416).json(error.ERROR_416);
-                }
-
-                // Set 
-                if (skip || limit) {
-                    res.status(206);
-                }
-
-                res.set('Content-Type', config.response_type.stix);
-                // transform array to bundle
-                const bundle = {
-                    type: 'bundle',
-                    id: 'bundle--' + uuidv4(),
-                    spec_version: config.bundle_spec_version,
-                    objects: responseData,
-                };
-                return res.send(bundle);               
-            })
-            .sort({ 'stix.created': -1 })
-            .skip(skip)
-            .limit(limit);
-
+                        return res.send(bundle);
+                    })
+                    .sort({ 'stix.created': -1 })
+                    .skip(skip)
+                    .limit(limit);
+            });
     } else {
         res.status(406).send(error.ERROR_406);
     }
